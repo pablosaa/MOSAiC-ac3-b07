@@ -6,22 +6,22 @@ using Dates
 using JLD2
 
 # Reading the Latitude and Longitude for AMSR2 ChukchiBeaufort region:
-const DATA_PATH = "/home/psgarfias/LIM/remsens/utqiagvik-nsa/";
-const SENS_PATH = "SeaIce/amsr2/";
-const PROC_PATH = joinpath(SENS_PATH, "HDF")
+const DATA_PATH = "/home/psgarfias/LIM/remsens/arctic-mosaic/";
+const SENS_PATH = "SeaIce/modis_amsr2/";
+const PROC_PATH = SENS_PATH; #joinpath(SENS_PATH, "HDF")
 #const WIND_PATH = joinpath(DATA_PATH, "");
 const latlon_file = joinpath(DATA_PATH,
                              PROC_PATH,
-                             "LongitudeLatitudeGrid-n3125-ChukchiBeaufort.h5");
+                             "lonlat_nsidc_1km.nc");
 ncxy = NCDataset(latlon_file, "r");
-lat = Array{Float64}(ncxy["Latitudes"][:,:]);
-lon = Array{Float64}(ncxy["Longitudes"][:,:]);
+lat = Array{Float64}(ncxy["lat"][:,:]);
+lon = Array{Float64}(ncxy["lon"][:,:]);
 close(ncxy)
 
-include("./SEAICE_tools.jl")
+include("/home/psgarfias/LIM/repos/SEAICEtools/src/SEAICEtools.jl")
 
 # Define coordinates for the North Slope Alaska site:
-nsa_lat = 71.323e0;
+nsa_lat = 83e0;
 nsa_lon = -156.609e0;
 
 # Parameters for the semi-circle from west-to-east and R_lim km radius:
@@ -35,7 +35,7 @@ R_lim = 50f0;     # Radius for area under interst [km]
 idx = Get_Sector_Indexes(θ₀, θ₁, R_lim=50f0);
 
 # mat_file = joinpath(WIND_PATH, PROC_PATH, "nsa_sector_lonlat.mat");
-mat_file = joinpath(DATA_PATH, SENS_PATH, "JLD", "nsa_sector_lonlat.jld2");
+mat_file = joinpath(DATA_PATH, SENS_PATH, "JLD", "polarstern_sector_lonlat.jld2");
 
 if !isfile(mat_file)
     tmp = Tuple.(idx);
@@ -57,9 +57,9 @@ end
 # Then extract the winddir angle and store as range dependent, for 50 and 100km.
 #
 
-for yy ∈ (2018)
-    for mm ∈ (11,12)
-        for dd ∈ (1:31)
+for yy ∈ (2019)
+    for mm ∈ (12)
+        for dd ∈ (31)
 
             # Getting SeaIce Concentration file:
             sic_filen = getFilePattern(DATA_PATH, PROC_PATH, yy, mm, dd);
