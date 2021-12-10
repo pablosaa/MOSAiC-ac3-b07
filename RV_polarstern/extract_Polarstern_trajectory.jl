@@ -18,7 +18,7 @@ jahre = (2019)
 monaten = (10:12)
 tage = (1:31)
 
-key2keep = (:time, :lon, :lat, :alt, :heave);
+key2keep = (:time, :lon, :lat, :alt, :heave, :roll, :pitch, :yaw);
 RV = Dict(x=>[] for x=key2keep)
 
 for yy ∈ jahre
@@ -31,7 +31,7 @@ for yy ∈ jahre
             nav_file = flag ? tmp : [tmp]
 
             foreach(nav_file) do infile
-                let nav = ARMtools.getNAVData(infile, time_res=Hour(1));
+                let nav = ARMtools.getNAVData(infile, time_res=Hour(6));
 
                     foreach(key2keep) do kk
                         append!(RV[kk], nav[kk])
@@ -43,7 +43,7 @@ for yy ∈ jahre
     end
 end
 # Storing the track:
-jldsave(joinpath(OUT_PATH, "RVpolarstern_track.jld2"); RV);
+jldsave(joinpath(OUT_PATH, "RVpolarstern_track_2019.jld2"); RV);
 
 
 # end of script
