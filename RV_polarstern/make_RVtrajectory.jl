@@ -58,8 +58,8 @@ end;
 # ╔═╡ f27477b9-e562-469b-83e7-624bb6e0c4f8
 begin
 	yy=2019
-	mm=10
-	dd=20
+	mm=12 #4
+	dd=31 #15
 end
 
 # ╔═╡ a1cd8a64-67da-4efb-9eda-abef2f30498f
@@ -85,8 +85,15 @@ begin
                                                                    decop_hgt, H_wvt);
 
     # * Reading RV Polarstern NAV data:
-    RV = load("data/RVpolarstern_track_2019.jld2", "RV");
-    iday = findall(DateTime(yy,mm,dd) .< RV[:time] .< DateTime(yy,mm,dd,23,59,59))
+    RV = load("data/RVpolarstern_track_$(yy).jld2", "RV");
+    
+end;
+
+# ╔═╡ d8474db3-632f-45c4-b84e-ac1246283f43
+begin
+	iday = let thisday = DateTime(yy,mm,dd)
+		findall(thisday .≤ RV[:time] .< (thisday + Day(1) + Minute(1)))
+		end
     Nnav = length(iday)
 end
 
@@ -108,16 +115,18 @@ function estimate_box(Pcenter::Point, R_lim; δR = 5)
 end
 
 # ╔═╡ cde5697f-1925-4745-ac96-3229cf9619c7
-idx_nav = findall(RV[:time][iday[1]] .< rs[:time] .≤ RV[:time][iday[2]])
+# idx_nav is the RS indexes corresponding to two consecutive RV positions,
+# this change with the hour (normally 4 RV positions per day):
+idx_nav = findall(RV[:time][iday[3]] .< rs[:time] .≤ RV[:time][iday[4]])
 
-# ╔═╡ c5abc8f3-01bd-4c17-932f-51b790659714
-tmpWVT = Dict(:SIC2d => Matrix{Float64}(undef, 10, 1440), :errSIC2d=> Matrix{Float64}(undef, 10, 1440));#meSIC2d, :errSIC2d=> sdSIC2d, :range=> ρ2d);
+# ╔═╡ bd962be8-43f5-45ab-8c10-5dec2b43b97e
+size(idx_nav)
 
-# ╔═╡ 2b9d9f61-ec19-426e-9ee6-6af4c8d60934
-tmpWVT[:SIC2d][2, :]
+# ╔═╡ 52c22355-a932-438f-b08a-e96aab3b36ae
+iday
 
-# ╔═╡ ab891f71-bbf9-4b91-9190-f8748913b679
-tmpWIND = Dict(:Idx_W => Vector{Any}(undef, 1440))
+# ╔═╡ 63bba6f4-0ac6-423d-a0f1-dda5307b0a34
+#tmpWVT[:SIC2d][:, idx_nav] = meSIC2d; tmpWVT[:errSIC2d][:, idx_nav] = sdSIC2d;
 
 # ╔═╡ 1dc338cd-f47f-4dd0-ba4d-a94876cd9ce1
 @bind itime Slider(1:Nnav, show_value=true)
@@ -126,34 +135,58 @@ tmpWIND = Dict(:Idx_W => Vector{Any}(undef, 1440))
 # Reading Seaice for specific day
 begin
 	R_lim = 50e3;   # radius around the RV
+	# Pstern coordinates for the day and a given time (itime index of number of RV positions per day):
     Pstern = Point(RV[:lat][iday[itime]], RV[:lon][iday[itime]])
 	# distance from RV location for determination of box:
-	LonLim, LatLim = estimate_box(Pstern, R_lim, δR=5e3)
-		#extrema(RV[:lon][iday]) .+ (-5, 5) #(Pstern.λ-3, Pstern.λ+3)
-    #LatLim = extrema(RV[:lat][iday]) .+ (-.25, .25) #(Pstern.ϕ-1, Pstern.ϕ+1)
-	
+	LonLim, LatLim = SEAICE.estimate_box(Pstern, R_lim, δR=5e3)
+	# idx_box is the indexes of SIC coordenates inside the LonLim, LatLim Box:
     idx_box = SEAICE.extract_LonLat_Box(LonLim, LatLim, sic_coor);
+	# Polar coordenates centered on the position of RV polarstern:
     θ_all, ρ_all = SEAICE.LonLat_To_CenteredPolar(Pstern, sic_coor);
 
+	# reading SIC for the selected Box:
     SIC = SEAICE.read_SIC_Bremen_product(sic_file, idx_box, SICPROD="mersic")
-
-    
-
+ 
 end;
 
 # ╔═╡ 13d43f9d-5c8a-4073-b743-a18ad874b3d1
-# calculating the SIC as 2D matrix from wind_dir and SIC box:
-    idx_radial, ρ2d, meSIC2d, sdSIC2d = SEAICE.wind_idx_radial(wind_dir[idx_nav],
-                                                               wind_range[idx_nav],
+# calculating the SIC as 2D matrix from wind_dir and SIC box
+# for every interval of consecutive RV position:
+# e.g. 
+idx_radial, ρ2d, meSIC2d, sdSIC2d = SEAICE.wind_idx_radial(wind_dir[idx_nav],
+	                                                       wind_range[idx_nav],
                                                                θ_all[idx_box],
                                                                ρ_all[idx_box],
                                                                SIC);
 
-# ╔═╡ adbda212-5e41-49b6-9039-804369672890
-meSIC2d |> size, size(idx_nav)
+# ╔═╡ c5abc8f3-01bd-4c17-932f-51b790659714
+begin
+	tmpSIC2d = []
+	tmperrSIC2d = []
+	Nsic2d = []
+	tmp_radial =[]
+	for i=iday  #1:Nnav
+		#let idx_nav = i<Nnav ? findall(RV[:time][iday[i]] .≤ rs[:time] .< RV[:time][iday[i+1]]) : findall(rs[:time] .≥ RV[:time][iday[i]])
+		let idx_nav = i<iday[end] ? findall(RV[:time][i] .≤ rs[:time] .< RV[:time][i+1]) : findall(rs[:time] .≥ RV[:time][i])
+			idx_radial, ρ2d, meSIC2d, sdSIC2d = SEAICE.wind_idx_radial(wind_dir[idx_nav],
+															wind_range[idx_nav],
+                                                            θ_all[idx_box],
+                                                            ρ_all[idx_box],
+                                                            SIC);
+			push!(tmpSIC2d, meSIC2d)
+			push!(tmperrSIC2d, sdSIC2d)
+			push!(Nsic2d, length(idx_nav))
+			append!(tmp_radial, idx_radial)
+		end
+	end
+	tmpWVT = Dict(:SIC2d => hcat(tmpSIC2d...), :errSIC2d => hcat(tmperrSIC2d...)) #hcat(tmperrSIC2d...)
+end;
 
-# ╔═╡ 63bba6f4-0ac6-423d-a0f1-dda5307b0a34
-tmpWVT[:SIC2d][:, idx_nav] = meSIC2d; tmpWVT[:errSIC2d][:, idx_nav] = sdSIC2d;
+# ╔═╡ ac742e5f-2f02-4b75-bcf1-e631dee537d9
+Plots.plot(tmpWVT[:SIC2d], st=:heatmap, color=palette(:ice, 10), clim=(75, 100), colorbar_title="SIC(θ_wd) [%]")
+
+# ╔═╡ 2b9d9f61-ec19-426e-9ee6-6af4c8d60934
+filter(!isnan, tmpWVT[:SIC2d][:, idx_nav]) |> extrema
 
 # ╔═╡ 02483985-b845-48eb-9ebf-294caf118f28
 begin
@@ -165,25 +198,25 @@ end
 
 # ╔═╡ c0b307ef-21cf-4945-b06a-d1fd4167327e
 begin
-	lon_box, lat_box = SEAICE.Get_LonLat_From_Point(sic_coor[idx_box]);
-	scatter(lon_box, lat_box, marker_z=SIC, color=:ice, markerstrokewidth=0, markersize=2, marker=:square, size=(500,500),
-		clim=(60, 100), label=false, xlim=LonLim, ylim=LatLim, title="$(RV[:time][iday[itime]])", colorbartitle="SIC %")
-	plot!(RV[:lon], RV[:lat], lw=1, lc=:blue, label="drift")
-	plot!([RV[:lon][iday[itime]]], [RV[:lat][iday[itime]]], linestyle=:auto, marker=:star, markersize=10, mc=:red, label="RV Polarstern")
-	plot!(lon_circ, lat_circ, lw=1, lc=:red, alpha=0.2, label="50km")
+	#lon_box, lat_box = SEAICE.Get_LonLat_From_Point(sic_coor[idx_box]);
+	#scatter(lon_box, lat_box, marker_z=SIC, color=:ice, markerstrokewidth=0, markersize=2, marker=:square, size=(500,500),
+	#	clim=(60, 100), label=false, xlim=LonLim, ylim=LatLim, title="$(RV[:time][iday[itime]])", colorbartitle="SIC %")
+	#plot!(RV[:lon], RV[:lat], lw=1, lc=:blue, label="drift")
+	#plot!([RV[:lon][iday[itime]]], [RV[:lat][iday[itime]]], linestyle=:auto, marker=:star, markersize=10, mc=:red, label="RV Polarstern")
+	#plot!(lon_circ, lat_circ, lw=1, lc=:red, alpha=0.2, label="50km")
 	#savefig("plots/kakes_$(Dates.format(RV[:time][1], "yyyy-mm-dd")).png")
 end
 
 # ╔═╡ d9833ba1-f7b4-47b5-850f-a6a442516a1b
 begin
-	let imov = itime
+	imov = idx_nav[2]
 		# defining color scheme:
-		sic_bar = GMT.makecpt(cmap=:vik, truncate=(-1, 0), range=(80, 100, 5), continues=true, nobg=true)	
+		sic_bar = GMT.makecpt(cmap=:vik, truncate=(-1, 0), range=(70, 100, 5), continues=true, nobg=true)	
 		# creating title:
-		utc_title_str = @sprintf(" at %s UTC", Dates.format(rs[:time][imov], "HH:MM"))
+		utc_title_str = @sprintf(" on %s UTC", Dates.format(rs[:time][imov], "dd-uuu HH:MM"))
 		wind_title_str = "@:12:@%14%SIC $(uppercase(SENSOR)), WD="*@sprintf("%2.1f",maximum(wind_dir[imov]))*"@+o@+"*utc_title_str
 		# plotting the SIC pixels:
-		GMT.scatter(lon, lat, color=sic_bar, zcolor=SIC, markersize=0.2, marker=:square,
+		GMT.scatter(lon, lat, color=sic_bar, zcolor=SIC, markersize=0.15, marker=:square,
 			region = (LonLim..., LatLim...), frame=:g, figsize=(2, 8),
 			proj = (name=:stereographic, center = [Pstern.λ, 90], paralles=30),
 			xlabel="lon", ylabel="@:2:lat",
@@ -198,15 +231,15 @@ begin
 			shore=:brown, show=0
 		)
 		GMT.colorbar!(pos=(anchor=:CR, length=(6,0.2),offset=(1 ,0)), color=sic_bar, frame=(ylabel="%",), show=0)
-		GMT.plot!(lon_circ, lat_circ, lc=:red, lw=1, alpha=80, show=0)
-		GMT.plot!(Pstern.λ, Pstern.ϕ, symbol=(symb=:asterisk, size=.2), mc=:red, label="Polarstern", show=0)
-		GMT.plot!(RV[:lon], RV[:lat], linestyle=:line, lw=0.4, lc=:green, show=0, label="Drift")
-		lon_lines_mov, lat_lines_mov = SEAICE.create_pair_lines(Pstern, 1e3wind_range[iday[imov]], wind_dir[iday[imov]])
-		GMT.plot!(lon_lines_mov, lat_lines_mov, alpha=60, lc=:red3, label="Wind Dir",
-			legend=(justify=:BR), show=1, fmt=:png)
-		#, savefig="./plots/$(imov)_NSA_SIC_wdir_$(yy).$(mm).$(dd).png")
-	end
-end
+		GMT.plot!(lon_circ, lat_circ, lc=:red, lw=1, ls=:dash, alpha=80, show=0)
+		GMT.plot!(RV[:lon], RV[:lat], linestyle=:line, lw=0.4, lc=:lightred, show=0) #, label="Drift")
+		GMT.plot!(Pstern.λ, Pstern.ϕ, symbol=(symb=:asterisk, size=.2), mc=:red, markersize=1.8, show=0) #label="Polarstern",
+		lon_lines_mov, lat_lines_mov = SEAICE.create_pair_lines(Pstern, 1e3wind_range[imov], wind_dir[imov])
+		GMT.plot!(lon_lines_mov, lat_lines_mov, alpha=60, lc=:gray3, show=1, fmt=:png) #,
+		#GMT.legend!(pos=(map=(10, 84), outside=true), justify=:BR, show=1, fmt=:png) #, savefig="./plots/$(imov)_MOSAiC_SIC_wdir_$(yy).$(mm).$(dd).png")
+		#sleep(3)
+#	end
+end #justify=:BR, 
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -305,10 +338,10 @@ uuid = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 version = "1.11.2"
 
 [[ChangesOfVariables]]
-deps = ["LinearAlgebra", "Test"]
-git-tree-sha1 = "9a1d594397670492219635b35a3d830b04730d62"
+deps = ["ChainRulesCore", "LinearAlgebra", "Test"]
+git-tree-sha1 = "bf98fa45a0a4cee295de98d4c1462be26345b9a1"
 uuid = "9e997f8a-9a97-42d5-a9f1-ce6bfc15e2c0"
-version = "0.1.1"
+version = "0.1.2"
 
 [[ColorSchemes]]
 deps = ["ColorTypes", "Colors", "FixedPointNumbers", "Random"]
@@ -330,9 +363,9 @@ version = "0.12.8"
 
 [[Compat]]
 deps = ["Base64", "Dates", "DelimitedFiles", "Distributed", "InteractiveUtils", "LibGit2", "Libdl", "LinearAlgebra", "Markdown", "Mmap", "Pkg", "Printf", "REPL", "Random", "SHA", "Serialization", "SharedArrays", "Sockets", "SparseArrays", "Statistics", "Test", "UUIDs", "Unicode"]
-git-tree-sha1 = "dce3e3fea680869eaa0b774b2e8343e9ff442313"
+git-tree-sha1 = "44c37b4636bc54afac5c574d2d02b625349d6582"
 uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
-version = "3.40.0"
+version = "3.41.0"
 
 [[CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -363,9 +396,9 @@ version = "1.9.0"
 
 [[DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
-git-tree-sha1 = "7d9d316f04214f7efdbb6398d545446e246eff02"
+git-tree-sha1 = "3daef5523dd2e769dad2365274f760ff5f282c7d"
 uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
-version = "0.18.10"
+version = "0.18.11"
 
 [[DataValueInterfaces]]
 git-tree-sha1 = "bfc1187b79289637fa0ef6d4436ebdfe6905cbd6"
@@ -573,9 +606,9 @@ version = "0.5.0"
 
 [[InlineStrings]]
 deps = ["Parsers"]
-git-tree-sha1 = "ca99cac337f8e0561c6a6edeeae5bf6966a78d21"
+git-tree-sha1 = "8d70835a3759cdd75881426fced1508bb7b7e1b6"
 uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
-version = "1.1.0"
+version = "1.1.1"
 
 [[IntelOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -889,21 +922,21 @@ version = "2.0.1"
 
 [[PlotUtils]]
 deps = ["ColorSchemes", "Colors", "Dates", "Printf", "Random", "Reexport", "Statistics"]
-git-tree-sha1 = "b084324b4af5a438cd63619fd006614b3b20b87b"
+git-tree-sha1 = "8fb515c5a2c8941cef957e75afb99a2c24b753f3"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
-version = "1.0.15"
+version = "1.1.0"
 
 [[Plots]]
 deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "GeometryBasics", "JSON", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "PlotThemes", "PlotUtils", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "Requires", "Scratch", "Showoff", "SparseArrays", "Statistics", "StatsBase", "UUIDs", "UnicodeFun"]
-git-tree-sha1 = "93f484f18848234ac2c1387c7e5263f840cdafe3"
+git-tree-sha1 = "d73736030a094e8d24fdf3629ae980217bf1d59d"
 uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
-version = "1.24.2"
+version = "1.24.3"
 
 [[PlutoUI]]
 deps = ["AbstractPlutoDingetjes", "Base64", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
-git-tree-sha1 = "1e0cb51e0ccef0afc01aab41dc51a3e7f781e8cb"
+git-tree-sha1 = "5152abbdab6488d5eec6a01029ca6697dff4ec8f"
 uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
-version = "0.7.20"
+version = "0.7.23"
 
 [[Polynomials]]
 deps = ["Intervals", "LinearAlgebra", "OffsetArrays", "RecipesBase"]
@@ -953,9 +986,9 @@ version = "1.2.2"
 
 [[Requires]]
 deps = ["UUIDs"]
-git-tree-sha1 = "4036a3bd08ac7e968e27c203d45f5fff15020621"
+git-tree-sha1 = "8f82019e525f4d5c669692772a6f4b0a58b06a6a"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
-version = "1.1.3"
+version = "1.2.0"
 
 [[SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
@@ -1037,9 +1070,9 @@ version = "1.0.1"
 
 [[Tables]]
 deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "LinearAlgebra", "TableTraits", "Test"]
-git-tree-sha1 = "fed34d0e71b91734bf0a7e10eb1bb05296ddbcd0"
+git-tree-sha1 = "bb1064c9a84c52e277f1096cf41434b675cd368b"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-version = "1.6.0"
+version = "1.6.1"
 
 [[Tar]]
 deps = ["ArgTools", "SHA"]
@@ -1308,21 +1341,23 @@ version = "0.9.1+5"
 # ╠═d75bc0eb-44ff-4900-8b5e-8751f87a81f1
 # ╠═f27477b9-e562-469b-83e7-624bb6e0c4f8
 # ╠═a1cd8a64-67da-4efb-9eda-abef2f30498f
+# ╠═d8474db3-632f-45c4-b84e-ac1246283f43
 # ╠═47546b7d-98b8-4dd2-8ddc-9a6e5d39bc41
 # ╠═af4dc8c7-195d-4adc-a5fb-d6fce89f58da
 # ╠═811e526a-55af-4659-922d-33bdb6ff4078
-# ╠═2723a388-ae58-4ab1-8663-4f0bd3bbf8d9
+# ╟─2723a388-ae58-4ab1-8663-4f0bd3bbf8d9
 # ╠═468d92da-75cc-4d68-8f9d-abd17d0d2fcb
 # ╠═cde5697f-1925-4745-ac96-3229cf9619c7
+# ╠═bd962be8-43f5-45ab-8c10-5dec2b43b97e
 # ╠═13d43f9d-5c8a-4073-b743-a18ad874b3d1
-# ╠═adbda212-5e41-49b6-9039-804369672890
+# ╠═ac742e5f-2f02-4b75-bcf1-e631dee537d9
+# ╠═52c22355-a932-438f-b08a-e96aab3b36ae
 # ╠═c5abc8f3-01bd-4c17-932f-51b790659714
 # ╠═63bba6f4-0ac6-423d-a0f1-dda5307b0a34
 # ╠═2b9d9f61-ec19-426e-9ee6-6af4c8d60934
-# ╠═ab891f71-bbf9-4b91-9190-f8748913b679
 # ╠═02483985-b845-48eb-9ebf-294caf118f28
 # ╠═1dc338cd-f47f-4dd0-ba4d-a94876cd9ce1
-# ╠═c0b307ef-21cf-4945-b06a-d1fd4167327e
+# ╟─c0b307ef-21cf-4945-b06a-d1fd4167327e
 # ╠═d9833ba1-f7b4-47b5-850f-a6a442516a1b
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
