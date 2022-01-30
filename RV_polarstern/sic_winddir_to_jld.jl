@@ -1,5 +1,5 @@
-#!/opt/julia-1.6.0/bin/julia
-###!/home/psgarfias/.local/julia-1.6.1/bin/julia
+#!/home/psgarfias/.local/julia-1.6.1/bin/julia
+###!/opt/julia-1.6.0/bin/julia
 
 # script to add the wind direction and SIC to the database based on Lapse-rate
 
@@ -22,8 +22,8 @@ include(joinpath(homedir(), "LIM/repos/SEAICEtools.jl/src/SEAICEtools.jl"))
 # defining PATHS:
 const CAMPAIGN = "arctic-mosaic";
 # variables definition for SeaIce:
-const BASE_PATH = joinpath(homedir(), "LIM/data/B07/")
-const DATA_PATH = joinpath(homedir(), "LIM/remsens", CAMPAIGN);
+const BASE_PATH = "/projekt2/ac3data/B07-data"; #joinpath(homedir(), "LIM/data/B07/")
+const DATA_PATH = joinpath("/projekt2/remsens/data_new/site-campaign/", CAMPAIGN); #joinpath(homedir(), "LIM/remsens", CAMPAIGN);
 ###const DATA_PATH = "/media/psgarfias/LaCie SSD/LIM/data/";
 const SENSOR = "modis_amsr2"; #"amsr2";
 const PRODUCT = "SeaIce";
@@ -50,8 +50,8 @@ R_lim = 50f0
 θ₀ = 1f0
 θ₁ = 360f0
 
-years = (2019)
-months =(10, 11,12)
+years = (2020)
+months =(1:4)
 days =(1:31)
 
 !isempty(ARGS) && foreach(ARGS) do argin
@@ -72,15 +72,12 @@ for yy ∈ years
         for dd ∈ days
 
             # selecting RV track from the day:
-            tt = try
+            day0 = try
                 DateTime(yy,mm,dd)
             catch
                 continue
             end
             println("Working on $dd.$mm.$yy...")
-
-            iday = findall(tt .≤ RV[:time] .< (tt + Day(1))
-            Nnav = length(iday)
 
             # * Loading Thermodinamic information:
             lpr_file = ARMtools.getFilePattern(LPR_PATH, CAMPAIGN, yy, mm, dd)
@@ -99,8 +96,15 @@ for yy ∈ years
             #PBLH = ATM.estimate_Ri_PBLH(rs)
 
             # * Finding out Wind_dir from porfile and thermodynamic variables:
-            wind_dir, wind_spd, wind_range = ATM.Collect_WindDir_using_WVT(INV, rs, CBH,
-                                                                           decop_hgt, H_wvt);
+            wind_dir, wind_spd, wind_range = ATM.Collect_WindDir_using_WVT(INV, rs,
+                                                                           CBH,
+                                                                           decop_hgt,
+                                                                           H_wvt);
+
+            # * Selecting RV coordinates for the specific day:
+	    day1 = day0 + Day(1)
+            iday = findall(day0 .≤ RV[:time] .< day1)
+            Nnav = length(iday)
 
             ## READING SIC data for AMSR2 data for $(dd). $(mm). $(yy)
             Pstern = Point(RV[:lat][iday[2]], RV[:lon][iday[2]])
@@ -108,12 +112,14 @@ for yy ∈ years
             LonLim, LatLim = SEAICE.estimate_box(Pstern, R_lim, δR=5e3)
             #LonLim = extrema(RV[:lon][iday]) .+ (-3, 3) #(Pstern.λ-3, Pstern.λ+3)
             #LatLim = extrema(RV[:lat][iday]) .+ (-1, 1) #(Pstern.ϕ-1, Pstern.ϕ+1)
-	
+
+            # * Creating Box to work within:
             idx_box = SEAICE.extract_LonLat_Box(LonLim, LatLim, sic_coor);
+
+            # * Loading SIC data for Day and the specific box by idx_box:
             sic_filen = ARMtools.getFilePattern(PROC_PATH, SENSOR, yy, mm, dd);
             isnothing(sic_filen) && (println("No $(sic_filen)..."); continue)
     
-            # Reading corresponding SIC data for the selected sector with idx indexes:
             SIC = SEAICE.read_SIC_Bremen_product(sic_filen, idx_box, SICPROD="mersic");
 
             lon_box, lat_box = SEAICE.Get_LonLat_From_Point(sic_coor[idx_box]);
@@ -127,49 +133,61 @@ for yy ∈ years
             ### plot!(dayplt, rvplt)            
                 
             # defining temporal Dictionaries to storage part of the day
-            tmpSIC = Dict(:SIC2d => Matrix{Float64}(undef, 10, length(H_wvt)),
-                          :errSIC2d => Matrix{Float64}(undef, 10, length(H_wvt)),
-                          :range => [])
-
             tmpWIND = Dict(:WD => wind_dir, :WS => wind_spd,
-                           :Idx_W => Vector{Any}(undef, length(H_wvt)) );
-            for itime=2:Nnav
+                           :Idx_W => []);
+
+            # creating auxiliary variables for temporal storage:
+            tmpSIC2d = [];
+            tmperrSIC2d = [];
+            tmp_idx_radial = [];
+            ρ2d =[]
+            for i = iday  #2:Nnav
                 # new position for RV polarstern:
-                Pstern = Point(RV[:lat][iday[itime]], RV[:lon][iday[itime]])
+                Pstern = Point(RV[:lat][i], RV[:lon][i])
                 println(Pstern)
                 
                 # Plotting
-                lat = map(p->p.ϕ, sic_coor[idx_box]);
-	        lon = map(p->p.λ, sic_coor[idx_box]);
-                P_circ = SEAICE.Create_Semi_Circle(Pstern, 1f0, 360f0, R_lim=50e3)
-                lon_circ, lat_circ = SEAICE.Get_LonLat_From_Point(P_circ)
+                ##lat = map(p->p.ϕ, sic_coor[idx_box]);
+	        ##lon = map(p->p.λ, sic_coor[idx_box]);
+                ##P_circ = SEAICE.Create_Semi_Circle(Pstern, 1f0, 360f0, R_lim=50e3)
+                ##lon_circ, lat_circ = SEAICE.Get_LonLat_From_Point(P_circ)
                 
                 ##plot!(dayplt, [RV[:lon][iday[itime]]], [RV[:lat][iday[itime]]], linestyle=:auto,
                 ##      marker=:star, markersize=10, mc=RGB(Nnav/itime, .1 ,.1), label="RV Polarstern");
 
                 ##plot!(dayplt, lon_circ, lat_circ, lw=1, lc=RGB(Nnav/itime, .1 ,.1), alpha=0.2, label="radii")
+                ##idx_nav = let RVtime = (RV[:time][iday[itime-1]], RV[:time][iday[itime]])
+                ##    findall(RVtime[1] .< rs[:time] .≤ RVtime[2])
+                ##end
+
                 
 
                 # polar coordinates for the new RV polarstern position:
                 θ_all, ρ_all = SEAICE.LonLat_To_CenteredPolar(Pstern, sic_coor);
 
-                idx_nav = let RVtime = (RV[:time][iday[itime-1]], RV[:time][iday[itime]])
-                    findall(RVtime[1] .< rs[:time] .≤ RVtime[2])
+                let idx_nav = i<iday[end] ? findall(RV[:time][i] .≤ rs[:time] .< RV[:time][i+1]) : findall(rs[:time] .≥ RV[:time][i])
+                    # calculating the SIC as 2D matrix from wind_dir and SIC box:
+                    idx_radial, mρ, meSIC2d, sdSIC2d = SEAICE.wind_idx_radial(wind_dir[idx_nav],
+                                                                               wind_range[idx_nav],
+                                                                               θ_all[idx_box],
+                                                                               ρ_all[idx_box],
+                                                                               SIC);
+                    push!(tmpSIC2d, meSIC2d);
+                    push!(tmperrSIC2d, sdSIC2d);
+                    append!(tmp_idx_radial, idx_radial);
+                    ρ2d = mρ
                 end
-                # calculating the SIC as 2D matrix from wind_dir and SIC box:
-                idx_radial, ρ2d, meSIC2d, sdSIC2d = SEAICE.wind_idx_radial(wind_dir[idx_nav],
-                                                                           wind_range[idx_nav],
-                                                                           θ_all[idx_box],
-                                                                           ρ_all[idx_box],
-                                                                           SIC);
-
-                tmpSIC[:SIC2d][:, idx_nav] = meSIC2d;
-                tmpSIC[:errSIC2d][:, idx_nav] = sdSIC2d;
-                tmpSIC[:range] = ρ2d;
                 
-                tmpWIND[:Idx_W][idx_nav] = idx_radial;
-
             end  # over loop of Nnav (number of RV positions along the day)
+            
+            tmpSIC = Dict(
+                :SIC2d => hcat(tmpSIC2d...),
+                :errSIC2d => hcat(tmperrSIC2d...),
+                :range => ρ2d[2:end],
+            )
+            
+            tmpWIND[:Idx_W] = tmp_idx_radial;
+
             # * Saving results to LPR files:
             !haskey(flpr, "WVT") && (flpr["WVT"] = Dict(:HWVT => H_wvt,
                                                         :IdxWVT => i_wvt,

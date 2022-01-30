@@ -1,4 +1,5 @@
-#!/opt/julia-1.6.0/bin/julia
+#!/home/psgarfias/.local/julia-1.6.1/bin/julia
+###!/opt/julia-1.6.0/bin/julia
 
 # script to extract the RV Polarstern trajectory during the
 # MOSAiC expedition and stored as single database
@@ -9,13 +10,13 @@ using JLD2
 using Printf
 
 const CAMPAIGN = "arctic-mosaic";
-const DATA_PATH = "/media/psgarfias/LaCie SSD/LIM/data/";
+const DATA_PATH = "/projekt2/remsens/data_new/site-campaign/"; #"/media/psgarfias/LaCie SSD/LIM/data/";
 const DATA_SOURCE = "NAV";
 const OUT_PATH = joinpath(pwd(), "data");
 #const LATLON_FILE = joinpath(PROC_PATH, "lonlat_nsidc_1km.nc");
 
-jahre = (2019)
-monaten = (10:12)
+jahre = (2020)
+monaten = (1:6)
 tage = (1:31)
 
 key2keep = (:time, :lon, :lat, :alt, :heave, :roll, :pitch, :yaw);
@@ -43,7 +44,7 @@ for yy ∈ jahre
     end
 end
 # Storing the track:
-jldsave(joinpath(OUT_PATH, "RVpolarstern_track_2019.jld2"); RV);
+jldsave(joinpath(OUT_PATH, "RVpolarstern_track_2020.jld2"); RV);
 
 
 # end of script
