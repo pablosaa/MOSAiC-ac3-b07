@@ -57,9 +57,9 @@ end;
 
 # ╔═╡ f27477b9-e562-469b-83e7-624bb6e0c4f8
 begin
-	yy=2019
-	mm=12 #4
-	dd=31 #15
+	yy=2020
+	mm=4
+	dd=15
 end
 
 # ╔═╡ a1cd8a64-67da-4efb-9eda-abef2f30498f
@@ -119,14 +119,11 @@ end
 # this change with the hour (normally 4 RV positions per day):
 idx_nav = findall(RV[:time][iday[3]] .< rs[:time] .≤ RV[:time][iday[4]])
 
-# ╔═╡ bd962be8-43f5-45ab-8c10-5dec2b43b97e
-size(idx_nav)
-
-# ╔═╡ 52c22355-a932-438f-b08a-e96aab3b36ae
-iday
-
 # ╔═╡ 63bba6f4-0ac6-423d-a0f1-dda5307b0a34
-#tmpWVT[:SIC2d][:, idx_nav] = meSIC2d; tmpWVT[:errSIC2d][:, idx_nav] = sdSIC2d;
+# show_measurements(CLN, SITENAME="Polarstern", savefig="./plots/Cloudnet_meas_MOSAiC_$(yy).$(mm).$(dd).png")
+
+# ╔═╡ 2b9d9f61-ec19-426e-9ee6-6af4c8d60934
+floor(RV[:time][1], Month):Day(14):ceil(RV[:time][81], Month) .|> x->Dates.format(x, "dd/u/yy")
 
 # ╔═╡ 1dc338cd-f47f-4dd0-ba4d-a94876cd9ce1
 @bind itime Slider(1:Nnav, show_value=true)
@@ -165,6 +162,7 @@ begin
 	tmperrSIC2d = []
 	Nsic2d = []
 	tmp_radial =[]
+	tmpρ2d = []
 	for i=iday  #1:Nnav
 		#let idx_nav = i<Nnav ? findall(RV[:time][iday[i]] .≤ rs[:time] .< RV[:time][iday[i+1]]) : findall(rs[:time] .≥ RV[:time][iday[i]])
 		let idx_nav = i<iday[end] ? findall(RV[:time][i] .≤ rs[:time] .< RV[:time][i+1]) : findall(rs[:time] .≥ RV[:time][i])
@@ -177,16 +175,11 @@ begin
 			push!(tmperrSIC2d, sdSIC2d)
 			push!(Nsic2d, length(idx_nav))
 			append!(tmp_radial, idx_radial)
+			global tmpρ2d = ρ2d;
 		end
 	end
 	tmpWVT = Dict(:SIC2d => hcat(tmpSIC2d...), :errSIC2d => hcat(tmperrSIC2d...)) #hcat(tmperrSIC2d...)
 end;
-
-# ╔═╡ ac742e5f-2f02-4b75-bcf1-e631dee537d9
-Plots.plot(tmpWVT[:SIC2d], st=:heatmap, color=palette(:ice, 10), clim=(75, 100), colorbar_title="SIC(θ_wd) [%]")
-
-# ╔═╡ 2b9d9f61-ec19-426e-9ee6-6af4c8d60934
-filter(!isnan, tmpWVT[:SIC2d][:, idx_nav]) |> extrema
 
 # ╔═╡ 02483985-b845-48eb-9ebf-294caf118f28
 begin
@@ -209,9 +202,9 @@ end
 
 # ╔═╡ d9833ba1-f7b4-47b5-850f-a6a442516a1b
 begin
-	imov = idx_nav[2]
+	imov = 1000 #idx_nav[1]
 		# defining color scheme:
-		sic_bar = GMT.makecpt(cmap=:vik, truncate=(-1, 0), range=(70, 100, 5), continues=true, nobg=true)	
+		sic_bar = GMT.makecpt(cmap=:vik, truncate=(-1, 0), range=(75, 100, 5), continues=true, nobg=true)	
 		# creating title:
 		utc_title_str = @sprintf(" on %s UTC", Dates.format(rs[:time][imov], "dd-uuu HH:MM"))
 		wind_title_str = "@:12:@%14%SIC $(uppercase(SENSOR)), WD="*@sprintf("%2.1f",maximum(wind_dir[imov]))*"@+o@+"*utc_title_str
@@ -232,14 +225,23 @@ begin
 		)
 		GMT.colorbar!(pos=(anchor=:CR, length=(6,0.2),offset=(1 ,0)), color=sic_bar, frame=(ylabel="%",), show=0)
 		GMT.plot!(lon_circ, lat_circ, lc=:red, lw=1, ls=:dash, alpha=80, show=0)
-		GMT.plot!(RV[:lon], RV[:lat], linestyle=:line, lw=0.4, lc=:lightred, show=0) #, label="Drift")
-		GMT.plot!(Pstern.λ, Pstern.ϕ, symbol=(symb=:asterisk, size=.2), mc=:red, markersize=1.8, show=0) #label="Polarstern",
+		GMT.plot!(RV[:lon], RV[:lat], linestyle=:line, lw=0.4, lc=:lightred, show=0, label="Drift")
+		GMT.plot!(Pstern.λ, Pstern.ϕ, symbol=(symb=:asterisk, size=.3), mc=:red, markersize=1.8, show=0, label="Polarstern")
 		lon_lines_mov, lat_lines_mov = SEAICE.create_pair_lines(Pstern, 1e3wind_range[imov], wind_dir[imov])
-		GMT.plot!(lon_lines_mov, lat_lines_mov, alpha=60, lc=:gray3, show=1, fmt=:png) #,
+		GMT.plot!(lon_lines_mov, lat_lines_mov, alpha=60, lc=:gray3, show=1, fmt=:png) #, label="Wind dir.", savefig="./plots/legend_$(imov)_MOSAiC_SIC_wdir_$(yy).$(mm).$(dd).png", legend=(justify=:TL)) #,
 		#GMT.legend!(pos=(map=(10, 84), outside=true), justify=:BR, show=1, fmt=:png) #, savefig="./plots/$(imov)_MOSAiC_SIC_wdir_$(yy).$(mm).$(dd).png")
 		#sleep(3)
 #	end
 end #justify=:BR, 
+
+# ╔═╡ ac742e5f-2f02-4b75-bcf1-e631dee537d9
+begin
+	sic2d_utc = Plots.plot(rs[:time], ρ2d[2:end], tmpWVT[:SIC2d], st=:heatmap, color=palette(:ice, 10), clim=(75, 100),
+		colorbar_title="SIC(θ_wd) [%]", tick_dir=:out, ylabel="Radius/km", xlabel="UTC time",
+		title="SIC from "*Dates.format(rs[:time][imov], "dd-uuu-yyyy"), guidefontsize=14, tickfontsize=12,
+		xticks=(rs[:time][1:180:end], Dates.format.(rs[:time][1:180:end], "H:MM")))
+	#savefig(sic2d_utc, "./plots/$(imov)_MOSAiC_2DSIC_utc_$(yy).$(mm).$(dd).png")
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1348,11 +1350,9 @@ version = "0.9.1+5"
 # ╟─2723a388-ae58-4ab1-8663-4f0bd3bbf8d9
 # ╠═468d92da-75cc-4d68-8f9d-abd17d0d2fcb
 # ╠═cde5697f-1925-4745-ac96-3229cf9619c7
-# ╠═bd962be8-43f5-45ab-8c10-5dec2b43b97e
 # ╠═13d43f9d-5c8a-4073-b743-a18ad874b3d1
-# ╠═ac742e5f-2f02-4b75-bcf1-e631dee537d9
-# ╠═52c22355-a932-438f-b08a-e96aab3b36ae
 # ╠═c5abc8f3-01bd-4c17-932f-51b790659714
+# ╠═ac742e5f-2f02-4b75-bcf1-e631dee537d9
 # ╠═63bba6f4-0ac6-423d-a0f1-dda5307b0a34
 # ╠═2b9d9f61-ec19-426e-9ee6-6af4c8d60934
 # ╠═02483985-b845-48eb-9ebf-294caf118f28
