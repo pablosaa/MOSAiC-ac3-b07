@@ -31,6 +31,7 @@ RV_polarstern/data
 RV_polarstern/plots
 *.jld2
 *.png
+*.csv
 
 # GMT garbage files
 gmt.history
