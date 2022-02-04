@@ -185,7 +185,7 @@ marginalhist(NSAdat[:aveSIC][idx_dec], log10.(NSAdat[:lwp][idx_dec]), bins=(20,4
 
 # ╔═╡ 3bce60f0-3f42-4a75-b8b4-2bdbbf1d608c
 begin
-	xedg = (68:2:100)
+	xedg = (70:5:100)
 	yedg = 10.0.^(0:0.1:3)
 	y01 = (-0.05:0.05:1)
 	NcoLWP = hist2d(NSAdat[:aveSIC][idx_cop], NSAdat[:lwp][idx_cop], xedg, yedg);
@@ -195,19 +195,19 @@ begin
 end;
 
 # ╔═╡ a6eac337-eb4a-455f-8eb0-28a531bb4558
-pltcoLWP = heatmap(xedg[2:end], yedg[2:end], log10.(NcoLWP), color=cgrad(:plasma, scale=:linear), yscale=:log10, clim=(0, 3.5),
+pltcoLWP = heatmap(xedg[2:end], yedg[2:end], log10.(NcoLWP), color=cgrad(:plasma, scale=:linear), yscale=:log10, clim=(0, 4.5),
 frame=:box, tickdir=:out, minorticks=true, xlabel="Average SIC %", ylabel="LWP / g m⁻²", colorbartitle="log10 # occurence", colorbar=true, title="Coupled", guidefontsize=13, tickfontsize=11)
 
 # ╔═╡ de8f2db6-b39f-4737-844c-b33bab433ae5
-pltdeLWP = heatmap(xedg[2:end], yedg[2:end], log10.(NdeLWP), color=cgrad(:plasma, scale=:linear), yscale=:log10, clim=(0, 3.5),
+pltdeLWP = heatmap(xedg[2:end], yedg[2:end], log10.(NdeLWP), color=cgrad(:plasma, scale=:linear), yscale=:log10, clim=(0, 4.5),
 frame=:box, tickdir=:out, minorticks=true, xlabel="Average SIC %", ylabel="LWP / g m⁻²", colorbartitle="log10 # occurence", colorbar=true, title="Decoupled", guidefontsize=13, tickfontsize=11)
 
 # ╔═╡ 7833edbd-9ff4-40a9-94db-27e721f54c43
-pltcoIWP = heatmap(xedg[2:end], yedg[2:end], log10.(NcoIWP), color=cgrad(:winter, scale=:linear), yscale=:log10, clim=(0, 3.5),
+pltcoIWP = heatmap(xedg[2:end], yedg[2:end], log10.(NcoIWP), color=cgrad(:winter, scale=:linear), yscale=:log10, clim=(0, 4.5),
 frame=:box, tickdir=:out, minorticks=true, xlabel="Average SIC %", ylabel="IWP / g m⁻²", colorbartitle="log10 # occurence", colorbar=true, title="Coupled", guidefontsize=13, tickfontsize=11)
 
 # ╔═╡ 10c2748b-f026-433c-948d-5e57f310e164
-pltdeIWP = heatmap(xedg[2:end], yedg[2:end], log10.(NdeIWP), color=cgrad(:winter, scale=:linear), yscale=:log10, clim=(0, 3.5),
+pltdeIWP = heatmap(xedg[2:end], yedg[2:end], log10.(NdeIWP), color=cgrad(:winter, scale=:linear), yscale=:log10, clim=(0, 4.5),
 frame=:box, tickdir=:out, minorticks=true, xlabel="Average SIC %", ylabel="IWP / g m⁻²", colorbartitle="log10 # occurence", colorbar=true, title="Decoupled", guidefontsize=13, tickfontsize=11)
 
 # ╔═╡ 2c3eae9a-4808-4f39-9d39-98b60f1a26b2
@@ -219,9 +219,12 @@ bars_dec = groupedbar(xedg2v[2:end], NRatio_deWI, bar_position=:stack, bar_width
 
 # ╔═╡ 464761ac-d284-4320-8e0a-8a19a0c555f6
 begin
-	savefig(bars_cop, "~/LIM/scripts/MOSAiC-ac3-b07/CoupledCloud_Seaice/plots/fraction_cop_LWP_IWC.png")
-	savefig(bars_dec, "~/LIM/scripts/MOSAiC-ac3-b07/CoupledCloud_Seaice/plots/fraction_dec_LWP_IWC.png")
+	#savefig(bars_cop, "~/LIM/scripts/MOSAiC-ac3-b07/CoupledCloud_Seaice/plots/new_fraction_cop_LWP_IWC.png")
+	#savefig(bars_dec, "~/LIM/scripts/MOSAiC-ac3-b07/CoupledCloud_Seaice/plots/new_fraction_dec_LWP_IWC.png")
 end
+
+# ╔═╡ 58c8d793-62c1-4e9a-bf1c-0891416bb9fa
+plot(NSAdat[:CBH][findall(idx_de)] .- NSAdat[:HWVT][findall(idx_de)] , ylim=(-2,4))
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1330,7 +1333,7 @@ version = "0.9.1+5"
 """
 
 # ╔═╡ Cell order:
-# ╟─aeac12a2-81df-11ec-2686-af7c0b0922b4
+# ╠═aeac12a2-81df-11ec-2686-af7c0b0922b4
 # ╠═7f90e5e7-54f1-4441-b40d-b6322108a606
 # ╟─02dff75e-dc5f-46be-8072-567ac0d3bbaa
 # ╠═e50d1e5b-5cd3-4839-b799-cc527a79d674
@@ -1361,5 +1364,6 @@ version = "0.9.1+5"
 # ╠═2c3eae9a-4808-4f39-9d39-98b60f1a26b2
 # ╠═f8dd8689-3af2-4d50-ab15-43be98fd2d65
 # ╠═464761ac-d284-4320-8e0a-8a19a0c555f6
+# ╠═58c8d793-62c1-4e9a-bf1c-0891416bb9fa
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
