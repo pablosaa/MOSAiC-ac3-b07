@@ -16,19 +16,17 @@ end
 
 # ╔═╡ 5ee8ddb5-bc64-4ae2-ac0a-bfa3f2a7659f
 begin
-	using ARMtools
-	using Plots
-	using Dates
-	using Printf
-	using PlutoUI
-	using Navigation, NCDatasets
-    using JLD2
+    using ARMtools
+    using Plots
+    using Dates
+    using Printf
+    using PlutoUI
+    using Navigation, NCDatasets
+	using JLD2
     using ATMOStools
     const ATM=ATMOStools
+    using GMT
 end
-
-# ╔═╡ 36dea51e-45ba-4b38-8208-8220541604f0
-using GMT
 
 # ╔═╡ 47546b7d-98b8-4dd2-8ddc-9a6e5d39bc41
 include(joinpath(homedir(), "LIM/repos/SEAICEtools.jl/src/SEAICEtools.jl"))
@@ -44,15 +42,12 @@ main {
 # ╔═╡ d75bc0eb-44ff-4900-8b5e-8751f87a81f1
 begin
     const CAMPAIGN = "arctic-mosaic";
-    const BASE_PATH = joinpath(homedir(), "LIM/data/B07/") #"/media/psgarfias/LaCie SSD/LIM/data/";
-    const DATA_PATH = joinpath(homedir(), "LIM/remsens", CAMPAIGN);
-    const SENSOR = "modis_amsr2";
+    const BASE_PATH = joinpath(homedir(), "/media/psgarfias/LaCie SSD/LIM/data/", CAMPAIGN); #"LIM/data/B07/") #
+    #const DATA_PATH = joinpath(homedir(), "LIM/remsens", CAMPAIGN);
+    const SENSOR = "osisaf" #"modis_amsr2";
     const PRODUCT = "SeaIce";
-    const DATA_SOURCE = "NAV";
+    #const DATA_SOURCE = "NAV";
     const PROC_PATH = joinpath(BASE_PATH, PRODUCT, SENSOR);
-    const LATLON_FILE = joinpath(PROC_PATH, "lonlat_nsidc_1km.nc");
-    # Lapse-rate files:
-    const LPR_PATH = joinpath(BASE_PATH, "LP")
 end;
 
 # ╔═╡ f27477b9-e562-469b-83e7-624bb6e0c4f8
@@ -62,36 +57,27 @@ begin
 	dd=15
 end
 
+# ╔═╡ ef32ae5b-3df4-4e5d-8c22-414cd15422b1
+    const LATLON_FILE = if SENSOR=="modis_amsr2"
+		joinpath(PROC_PATH, "lonlat_nsidc_1km.nc");
+	elseif SENSOR=="osisaf"
+		ARMtools.getFilePattern(BASE_PATH, PRODUCT*"/osisaf", yy, mm, dd)
+	else
+		@error "Sensor not recognized"
+	end
+    
+
 # ╔═╡ a1cd8a64-67da-4efb-9eda-abef2f30498f
 begin
-    # * Loading Thermodinamic information:
-    lpr_file = ARMtools.getFilePattern(LPR_PATH, CAMPAIGN, yy, mm, dd)
-    #isnothing(lpr_file) && continue
-
-    flpr = jldopen(lpr_file, "a+")
-    INV = flpr["INVvar"]
-    CBH = flpr["CBH"]
-    decop_hgt = flpr["decop_hgt"]
-    close(flpr)
-
-    ### Obtain wind direction profile based on water vapour flux:
-    rs_file = ARMtools.getFilePattern(DATA_PATH, "INTERPOLATEDSONDE", yy ,mm, dd)
-    rs = ARMtools.getSondeData(rs_file);
-    H_wvt, i_wvt, i_wv50  = ATM.estimate_WVT_peak_altitude(rs) #
-    PBLH = ATM.estimate_Ri_PBLH(rs)
-
-    # * Finding out Wind_dir from porfile and thermodynamic variables:
-    wind_dir, wind_spd, wind_range = ATM.Collect_WindDir_using_WVT(INV, rs, CBH,
-                                                                   decop_hgt, H_wvt);
-
+    
     # * Reading RV Polarstern NAV data:
-    RV = load("data/RVpolarstern_track_$(yy).jld2", "RV");
+    RV = load("../RV_polarstern/data/RVpolarstern_track_$(yy).jld2", "RV");
     
 end;
 
 # ╔═╡ d8474db3-632f-45c4-b84e-ac1246283f43
 begin
-	iday = let thisday = DateTime(yy,mm,dd)
+    iday = let thisday = DateTime(yy,mm,dd)
 		findall(thisday .≤ RV[:time] .< (thisday + Day(1) + Minute(1)))
 		end
     Nnav = length(iday)
@@ -100,7 +86,11 @@ end
 # ╔═╡ af4dc8c7-195d-4adc-a5fb-d6fce89f58da
 begin
     
-    sic_coor = SEAICE.read_LatLon_Bremen_product(LATLON_FILE);
+    sic_coor = if SENSOR=="modis_amsr2"
+		SEAICE.read_LatLon_Bremen_product(LATLON_FILE);
+	elseif SENSOR=="osisaf"
+		SEAICE.read_LatLon_OSISAF_product(LATLON_FILE);
+	end
 
 end;
 
@@ -117,7 +107,18 @@ end
 # ╔═╡ cde5697f-1925-4745-ac96-3229cf9619c7
 # idx_nav is the RS indexes corresponding to two consecutive RV positions,
 # this change with the hour (normally 4 RV positions per day):
-idx_nav = findall(RV[:time][iday[3]] .< rs[:time] .≤ RV[:time][iday[4]])
+#idx_nav = findall(RV[:time][iday[3]] .< rs[:time] .≤ RV[:time][iday[4]])
+
+# ╔═╡ 13d43f9d-5c8a-4073-b743-a18ad874b3d1
+# calculating the SIC as 2D matrix from wind_dir and SIC box
+# for every interval of consecutive RV position:
+# e.g. 
+#idx_radial, ρ2d, meSIC2d, sdSIC2d = SEAICE.wind_idx_radial(wind_dir[idx_nav],
+#	                                                       wind_range[idx_nav],
+#                                                               θ_all[idx_box],
+#                                                               ρ_all[idx_box],
+#                                                               SIC);
+
 
 # ╔═╡ 63bba6f4-0ac6-423d-a0f1-dda5307b0a34
 # show_measurements(CLN, SITENAME="Polarstern", savefig="./plots/Cloudnet_meas_MOSAiC_$(yy).$(mm).$(dd).png")
@@ -142,43 +143,12 @@ begin
     θ_all, ρ_all = SEAICE.LonLat_To_CenteredPolar(Pstern, sic_coor);
 
 	# reading SIC for the selected Box:
-    SIC = SEAICE.read_SIC_Bremen_product(sic_file, idx_box, SICPROD="mersic")
- 	
-end;
-
-# ╔═╡ 13d43f9d-5c8a-4073-b743-a18ad874b3d1
-# calculating the SIC as 2D matrix from wind_dir and SIC box
-# for every interval of consecutive RV position:
-# e.g. 
-idx_radial, ρ2d, meSIC2d, sdSIC2d = SEAICE.wind_idx_radial(wind_dir[idx_nav],
-	                                                       wind_range[idx_nav],
-                                                               θ_all[idx_box],
-                                                               ρ_all[idx_box],
-                                                               SIC);
-
-# ╔═╡ c5abc8f3-01bd-4c17-932f-51b790659714
-begin
-	tmpSIC2d = []
-	tmperrSIC2d = []
-	Nsic2d = []
-	tmp_radial =[]
-	tmpρ2d = []
-	for i=iday  #1:Nnav
-		#let idx_nav = i<Nnav ? findall(RV[:time][iday[i]] .≤ rs[:time] .< RV[:time][iday[i+1]]) : findall(rs[:time] .≥ RV[:time][iday[i]])
-		let idx_nav = i<iday[end] ? findall(RV[:time][i] .≤ rs[:time] .< RV[:time][i+1]) : findall(rs[:time] .≥ RV[:time][i])
-			idx_radial, ρ2d, meSIC2d, sdSIC2d = SEAICE.wind_idx_radial(wind_dir[idx_nav],
-															wind_range[idx_nav],
-                                                            θ_all[idx_box],
-                                                            ρ_all[idx_box],
-                                                            SIC);
-			push!(tmpSIC2d, meSIC2d)
-			push!(tmperrSIC2d, sdSIC2d)
-			push!(Nsic2d, length(idx_nav))
-			append!(tmp_radial, idx_radial)
-			global tmpρ2d = ρ2d;
-		end
+    SIC = if SENSOR=="modis_amsr2"
+		SEAICE.read_SIC_Bremen_product(sic_file, idx_box, SICPROD="msic")
+	elseif SENSOR=="osisaf"
+		SEAICE.read_SIC_OSISAF_product(sic_file, idx_box, SICPROD="ice_conc")
 	end
-	tmpWVT = Dict(:SIC2d => hcat(tmpSIC2d...), :errSIC2d => hcat(tmperrSIC2d...)) #hcat(tmperrSIC2d...)
+ 	
 end;
 
 # ╔═╡ 02483985-b845-48eb-9ebf-294caf118f28
@@ -202,14 +172,16 @@ end
 
 # ╔═╡ d9833ba1-f7b4-47b5-850f-a6a442516a1b
 begin
+	pixel_size = Dict("modis_amsr2" => 0.15, "osisaf" => 1.35)
+	
 	imov = 1000 #idx_nav[1]
 		# defining color scheme:
 		sic_bar = GMT.makecpt(cmap=:vik, truncate=(-1, 0), range=(75, 100, 5), continues=true, nobg=true)	
 		# creating title:
-		utc_title_str = @sprintf(" on %s UTC", Dates.format(rs[:time][imov], "dd-uuu HH:MM"))
-		wind_title_str = "@:12:@%14%SIC $(uppercase(SENSOR)), WD="*@sprintf("%2.1f",maximum(wind_dir[imov]))*"@+o@+"*utc_title_str
+		utc_title_str = @sprintf(" on %s UTC", Dates.format(RV[:time][iday][1], "dd-uuu HH:MM"))
+		wind_title_str = "@:12:@%14%SIC $(uppercase(SENSOR)), "*utc_title_str
 		# plotting the SIC pixels:
-		GMT.scatter(lon, lat, color=sic_bar, zcolor=SIC, markersize=0.15, marker=:square,
+		GMT.scatter(lon, lat, color=sic_bar, zcolor=SIC, markersize=pixel_size[SENSOR], marker=:square,
 			region = (LonLim..., LatLim...), frame=:g, figsize=(2, 8),
 			proj = (name=:stereographic, center = [Pstern.λ, 90], paralles=30),
 			xlabel="lon", ylabel="@:2:lat",
@@ -226,22 +198,21 @@ begin
 		GMT.colorbar!(pos=(anchor=:CR, length=(6,0.2),offset=(1 ,0)), color=sic_bar, frame=(ylabel="%",), show=0)
 		GMT.plot!(lon_circ, lat_circ, lc=:red, lw=1, ls=:dash, alpha=80, show=0)
 		GMT.plot!(RV[:lon], RV[:lat], linestyle=:line, lw=0.4, lc=:lightred, show=0, label="Drift")
-		GMT.plot!(Pstern.λ, Pstern.ϕ, symbol=(symb=:asterisk, size=.3), mc=:red, markersize=1.8, show=0, label="Polarstern")
-		lon_lines_mov, lat_lines_mov = SEAICE.create_pair_lines(Pstern, 1e3wind_range[imov], wind_dir[imov])
-		GMT.plot!(lon_lines_mov, lat_lines_mov, alpha=60, lc=:gray3, show=1, fmt=:png) #, label="Wind dir.", savefig="./plots/legend_$(imov)_MOSAiC_SIC_wdir_$(yy).$(mm).$(dd).png", legend=(justify=:TL)) #,
+		GMT.plot!(Pstern.λ, Pstern.ϕ, symbol=(symb=:asterisk, size=.3), mc=:red, show=1, label="Polarstern", fmt=:png)
+		#lon_lines_mov, lat_lines_mov = SEAICE.create_pair_lines(Pstern, 1e3wind_range[imov], wind_dir[imov])
+		#GMT.plot!(lon_lines_mov, lat_lines_mov, alpha=60, lc=:gray3, show=1, fmt=:png) #, label="Wind dir.", savefig="./plots/legend_$(imov)_MOSAiC_SIC_wdir_$(yy).$(mm).$(dd).png", legend=(justify=:TL)) #,
 		#GMT.legend!(pos=(map=(10, 84), outside=true), justify=:BR, show=1, fmt=:png) #, savefig="./plots/$(imov)_MOSAiC_SIC_wdir_$(yy).$(mm).$(dd).png")
 		#sleep(3)
 #	end
 end #justify=:BR, 
 
-# ╔═╡ ac742e5f-2f02-4b75-bcf1-e631dee537d9
+
+# ╔═╡ cb90605b-3d1c-4c77-b779-6ba5f6ebf8b7
 begin
-	sic2d_utc = Plots.plot(rs[:time], ρ2d[2:end], tmpWVT[:SIC2d], st=:heatmap, color=palette(:ice, 10), clim=(75, 100),
-		colorbar_title="SIC(θ_wd) [%]", tick_dir=:out, ylabel="Radius/km", xlabel="UTC time",
-		title="SIC from "*Dates.format(rs[:time][imov], "dd-uuu-yyyy"), guidefontsize=14, tickfontsize=12,
-		xticks=(rs[:time][1:180:end], Dates.format.(rs[:time][1:180:end], "H:MM")))
-	#savefig(sic2d_utc, "./plots/$(imov)_MOSAiC_2DSIC_utc_$(yy).$(mm).$(dd).png")
-end
+	const OSISAF_PATH = joinpath(BASE_PATH, PRODUCT);
+	const LONLAT_OSISAF = ARMtools.getFilePattern(OSISAF_PATH, "osisaf", yy, mm, dd)
+	osi_coor = SEAICE.read_LatLon_OSISAF_product(LONLAT_OSISAF);
+end;
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -261,7 +232,7 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ARMtools = "~0.1.0"
 ATMOStools = "~0.1.0"
 GMT = "~0.39.0"
-JLD2 = "~0.4.15"
+JLD2 = "~0.4.21"
 NCDatasets = "~0.11.7"
 Navigation = "~0.4.1"
 Plots = "~1.24.2"
@@ -478,9 +449,9 @@ version = "3.3.10+0"
 
 [[FileIO]]
 deps = ["Pkg", "Requires", "UUIDs"]
-git-tree-sha1 = "2db648b6712831ecb333eae76dbfd1c156ca13bb"
+git-tree-sha1 = "80ced645013a5dbdc52cf70329399c35ce007fae"
 uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
-version = "1.11.2"
+version = "1.13.0"
 
 [[FixedPointNumbers]]
 deps = ["Statistics"]
@@ -650,10 +621,10 @@ uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
 
 [[JLD2]]
-deps = ["DataStructures", "FileIO", "MacroTools", "Mmap", "Pkg", "Printf", "Reexport", "TranscodingStreams", "UUIDs"]
-git-tree-sha1 = "46b7834ec8165c541b0b5d1c8ba63ec940723ffb"
+deps = ["FileIO", "MacroTools", "Mmap", "OrderedCollections", "Pkg", "Printf", "Reexport", "TranscodingStreams", "UUIDs"]
+git-tree-sha1 = "28b114b3279cdbac9a61c57b3e6548a572142b34"
 uuid = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
-version = "0.4.15"
+version = "0.4.21"
 
 [[JLLWrappers]]
 deps = ["Preferences"]
@@ -1339,8 +1310,8 @@ version = "0.9.1+5"
 # ╔═╡ Cell order:
 # ╟─77e2fd3c-5089-11ec-3649-d9eb04406078
 # ╠═5ee8ddb5-bc64-4ae2-ac0a-bfa3f2a7659f
-# ╠═36dea51e-45ba-4b38-8208-8220541604f0
 # ╠═d75bc0eb-44ff-4900-8b5e-8751f87a81f1
+# ╠═ef32ae5b-3df4-4e5d-8c22-414cd15422b1
 # ╠═f27477b9-e562-469b-83e7-624bb6e0c4f8
 # ╠═a1cd8a64-67da-4efb-9eda-abef2f30498f
 # ╠═d8474db3-632f-45c4-b84e-ac1246283f43
@@ -1351,13 +1322,12 @@ version = "0.9.1+5"
 # ╠═468d92da-75cc-4d68-8f9d-abd17d0d2fcb
 # ╠═cde5697f-1925-4745-ac96-3229cf9619c7
 # ╠═13d43f9d-5c8a-4073-b743-a18ad874b3d1
-# ╠═c5abc8f3-01bd-4c17-932f-51b790659714
-# ╠═ac742e5f-2f02-4b75-bcf1-e631dee537d9
 # ╠═63bba6f4-0ac6-423d-a0f1-dda5307b0a34
 # ╠═2b9d9f61-ec19-426e-9ee6-6af4c8d60934
 # ╠═02483985-b845-48eb-9ebf-294caf118f28
 # ╠═1dc338cd-f47f-4dd0-ba4d-a94876cd9ce1
 # ╟─c0b307ef-21cf-4945-b06a-d1fd4167327e
 # ╠═d9833ba1-f7b4-47b5-850f-a6a442516a1b
+# ╠═cb90605b-3d1c-4c77-b779-6ba5f6ebf8b7
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
