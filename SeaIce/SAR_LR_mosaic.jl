@@ -11,6 +11,7 @@ begin
 	using Plots
 	using Dates
 	using Geodesy
+        using Distributions
 end
 
 # ╔═╡ 262c7c9e-2523-47fe-a393-f5d11590d9ba
@@ -18,8 +19,13 @@ begin
 	using JLD2
 	using Scanf
 	using GMT
-        using MATLAB
 end
+
+# ╔═╡ 2caacf21-193f-4aa1-a1bc-8c3772b7b17b
+include("aux_math_functions.jl");
+
+# ╔═╡ 5eda1848-e7d9-43a9-8ed2-56f2155bc429
+include(joinpath(homedir(), "LIM/repos/SEAICEtools.jl/src/SEAICEtools.jl"))
 
 # ╔═╡ 61cee3af-fb33-47d2-80d4-9e0acd57c149
 html"""<style>
@@ -46,101 +52,137 @@ begin
 end;
 
 # ╔═╡ 6d69733a-b8d1-4e0a-a1c6-5fd491329248
-heute = DateTime(basename(sar_file)[25:39], DateFormat("yyyymmddTHHMMSS"))
-
-# ╔═╡ 2caacf21-193f-4aa1-a1bc-8c3772b7b17b
-RV = load("../RV_polarstern/data/RVpolarstern_track_2020.jld2", "RV")
-
-# ╔═╡ 5eda1848-e7d9-43a9-8ed2-56f2155bc429
-rv_lat, rv_lon = findfirst(>=(heute), RV[:time]) |> z-> (RV[:lat][z], RV[:lon][z])
-
-# ╔═╡ d78d41a2-38dd-43d6-a218-38374536cdb6
 begin
-	ori_lla = LLA(70, 45, 0)
-	rv_lla = LLA(rv_lat, rv_lon, 0)
-	rv_x = 5.2663e+05
-	rv_y = -3.1776e+05
-	UTMZ(rv_lla, wgs84)
-	# creating circle 50km around Polarstern
-	Rrv = let Ro=50e3
-		reduce(hcat, [[rv_x-Ro*cos(θ),  rv_y-Ro*sin(θ)] for θ ∈ (0:π/36:2π)])
-	end
-end
+    heute = DateTime(basename(sar_file)[25:39], DateFormat("yyyymmddTHHMMSS"))
+    RV = load("../RV_polarstern/data/RVpolarstern_track_2020.jld2", "RV")
+    rv_lat, rv_lon = findfirst(>=(heute), RV[:time]) |> z-> (RV[:lat][z], RV[:lon][z])
+end;
 
 # ╔═╡ d8861bb2-7f8c-4ac8-ac96-3dd504e496fe
 LF = sar["lead_fraction"][:] |> z->replace(z, missing=>NaN);
 
-# ╔═╡ 5dd03741-8c7c-4247-ad9b-d0e7991297ce
-xx = repeat(sar["x"], 1, length(sar["y"]));
-
-# ╔═╡ 61b4e38b-3d3f-432a-9234-8f3d311e6da0
-yy = repeat(sar["y"][:] |> transpose, length(sar["x"][:]),1);
-
-# ╔═╡ 1cdf3a5c-800e-44c8-9a80-ebaff2403f92
-xy = UTM.(yy, xx);
-
-# ╔═╡ 09b5cb48-53f0-45f0-a429-736676f04c22
-latlon = TT.(xy);
-
 # ╔═╡ f7a2d9a6-eac9-4d20-b51b-c84a6ff9c2df
 x0 = replace(sar["x"][:], missing=> NaN); y0=replace(sar["y"][:], missing=>NaN);
 
+# ╔═╡ 5dd03741-8c7c-4247-ad9b-d0e7991297ce
+xx, yy = couple2grid(x0, y0);
+
+# ╔═╡ 09b5cb48-53f0-45f0-a429-736676f04c22
+lat, lon = xy2latlon(xx, yy, ϕₖ=70.0, λ₀=-45.0);
+
 # ╔═╡ d65ec147-836b-4539-a40b-dd77ff7c25a9
 begin
-	cbar = GMT.makecpt(cmap=:lapaz, inverse=true, range=(0,1));
-	xyLF = GMT.mat2grid(LF', x=x0, y=y0)
+	cbar = GMT.makecpt(cmap=:lapaz, inverse=true, range=(0, 0.5));
+	xyLF = GMT.mat2grid(reverse(LF, dims=1), x=lon[250,:], y=reverse(lat[:,250]))
 end;
 
-# ╔═╡ 603f2af6-aad1-4956-88da-d9e20d5bf66f
-#begin
-#	xx0 = map(j->UTM(j, y0[1]), x0);
-#	yy0 = map(j->UTM(x0[1], j), y0);
-#	lat0 = getfield.(TT.(xx0), :lat);
-#	lon0 = getfield.(TT.(yy0), :lon);
-#end
+# ╔═╡ e46f56c8-dc76-44c4-822d-e537c46bc631
+LonLim, LatLim = SEAICE.estimate_box(Point(rv_lat, rv_lon), 50e3, δR=5e3)
 
-# ╔═╡ 7824e914-bb88-4001-a78f-8b4c9359e4fd
+# ╔═╡ 08e91c37-9b71-4afc-89c0-37adc1c9fd34
+sic_coor = Point.(lat, lon);
+
+# ╔═╡ 586d62b1-080b-4a2e-82ec-ae234be486c8
+idx_box = SEAICE.extract_LonLat_Box(LonLim, LatLim, sic_coor);
+
+# ╔═╡ 3d290a5f-5454-4e4b-b2ae-aaa72b594954
+SIC = LF[idx_box];
+
+# ╔═╡ 6c83c460-d358-474e-806d-ac6c00d55ca6
+θᵢ = 42.; θₑ = 51.;
+
+# ╔═╡ 850e8eeb-c56c-41cd-839d-df6469f9db1a
+# converting to polar for data within the box
 begin
-	nx,ny = size(LF)
-	coor = read_matfile("/home/psgarfias/LIM/data/SeaIce/luisa_leadfraction/latlon.mat");
-	lat0 = jarray(coor["lat"]);
-	lon0 = jarray(coor["lon"]);
+	θ, ρ = SEAICE.LonLat_To_CenteredPolar(rv_lat, rv_lon, lat, lon);
+	idx_wd = findall((θᵢ .≤ θ[idx_box] .≤ θₑ) .& (ρ[idx_box] .≤ 50));
+		#SEAICE.Get_Sector_Indexes(θᵢ, θₑ, collect(θ[idx_box]'), collect(ρ[idx_box]'));
 end;
 
-# ╔═╡ 45a2d328-684e-4d6e-a359-c6d6740508c3
-Plots.heatmap(lon0[1,:], lat0[:,1], LF', clim=(0,0.3), color=cgrad(:lapaz, rev=true)); Plots.scatter!([rv_lon], [rv_lat], m=:star, c=:red)
+# ╔═╡ 1be1fc5b-d5b7-43d7-8094-19bb9ad29ae1
+extrema(ρ[idx_box][idx_wd])
+
+# ╔═╡ b912bf26-9cc9-43dc-b1e8-0db2f2285c6f
+û, ŝ = let X = SIC[idx_wd]*0.49
+	filter!(>(0), X) #
+	#X[X .< 0] .= 0
+	median(X), std(X), quantile(X, [.25 .75])
+end
+
+# ╔═╡ 09cd84f7-6753-48c1-9a2c-3480778304f0
+μ̄, σ̄ = let X=SIC[idx_wd]*0.49
+	filter!(>(0), X) #
+	#X[X.<0] .= 0
+	stats_𝑁ₗᵤ(X)
+end
+
+# ╔═╡ 57117ffa-7aaf-40c0-8a8a-163fb9ce8cae
+0.49*SIC[idx_wd] |> x->filter(>(0),x) |> sum
+
+# ╔═╡ 90ca7bef-3040-4ea3-a933-dccdd6b83a44
+μ̄*0.48*length(idx_wd)
+
+# ╔═╡ 6dda406f-50f6-44c1-8aa2-ccc60747b241
+Plots.histogram(filter(≥(0),SIC[idx_wd]), bins=30, yscale=:log10); Plots.vline!([û μ̄], label=["û" "μ"])
+
+# ╔═╡ e8caeff3-a52b-4c7e-8c67-0b22126d267e
+Plots.scatter(ρ[idx_box][idx_wd], SIC[idx_wd], m=:s); Plots.hline!([û μ̄], label=["û" "μ"], legend=:topleft)
+
+# ╔═╡ ac72b777-9671-45fc-89df-27da0dff84cf
+idx_radial, ρ_bin, LF2D, σLF2D = SEAICE.wind_idx_radial([43:47], [50e0], θ[idx_box], ρ[idx_box], SIC, ρ_bin=Vector(0:1:50));
+
+# ╔═╡ 364d40bd-0263-494e-9ef8-71f8752a77ff
+Plon, Plat = SEAICE.create_pair_lines(Point(rv_lat, rv_lon), 50e3, [θᵢ, θₑ])
+
+# ╔═╡ cbc18c2c-de16-44c2-8169-418a750f15e6
+Plots.scatter(lon[idx_box][idx_wd], lat[idx_box][idx_wd]); Plots.plot!(Plon, Plat)
+
+# ╔═╡ 4ed70ba1-fb76-4855-a904-46f27992db05
+[Plat...]
+
+# ╔═╡ fb167725-3156-4c2a-8280-5da46070e0ed
+begin
+	P_circ = SEAICE.Create_Semi_Circle(Point(rv_lat, rv_lon), 1f0, 360f0, R_lim=50e3)
+    lon_circ, lat_circ = SEAICE.Get_LonLat_From_Point(P_circ)
+end;
 
 # ╔═╡ d5ac0e2d-7531-45e7-9dc6-7960b44b71e8
 begin
 	#GMT.imshow(xyLF, cmap=cbar, frame=(axes="WS", annot=false, grid=false), figsize=(6,6), show=0, fmt=:png)
-	GMT.scatter(lon0[:], lat0[:], zcolor=LF',
-		proj=(name=:stereographic, center=[10, 90]), figsize=(6,6),
-		region=(3, 27, 83, 85.5),frame=:g, cmap=cbar, markersize=0.1, marker=:square)
+	GMT.scatter(lon[:], lat[:], zcolor=LF,
+		proj=(name=:Stereographic, center=[10, 90]), figsize=(6,6),
+		region=(0, 27, 83, 85.5), cmap=cbar, markersize=0.05, marker=:square)
+	GMT.basemap!(region=(0, 27, 83, 85.5), proj=(name=:Stereographic, center=[10,90]), figsize=(6,6),
+		#xaxis=(axes=:Sn, annot=5, ticks="1deg", grid=false),
+		yaxis=(axes=:We, annot=1, ticks="30m", grid=false),
+		rose = (outside=true, anchor=:TR, width=1., frame=false, offset=(-0.8, -1.5), label=true),
+		#map_scale=(anchor=:TL, scale_at_lat=85.01, font="1p", length="100k", label=true, fancy=true)
+	)
 	#GMT.plot!(Rrv[1,:], Rrv[2,:], lc=:lightred, linestyle=:line, lw=0.3)
 	#GMT.plot!(rv_x, rv_y, marker=:plus, mc=:lightred)
-	GMT.coast!(#frame=(frame=:a, axes="EN", annot=true, grid=true),
-		proj=(name=:stereographic, center=[10, 90]), figsize=(6,6),
-		xaxis=(axes=:SN, annot=true, grid=true), yaxis=(axes=:WE, annot="60m", ticks="30m", grid=true),
-		region=(3, 27, 83, 85.5),
-	rose = (outside=true, anchor=:TR, width=1.2, frame=false, offset=(-2.0, -3.0), label=true), show=0, fmt=:png)
-	GMT.colorbar!(pos=(anchor=:CR, length=(6,0.2), offset=(1 ,0)), cmap=cbar, frame=(annot=:auto,xlabel="LF"))
-	GMT.plot!(rv_lon, rv_lat, marker=:point, show=1, fmt=:png)
+	#GMT.coast!(#frame=(frame=:a, axes="EN", annot=true, grid=true),
+	#	proj=(name=:stereographic, center=[10, 90]), figsize=(6,6),
+	#	xaxis=(axes=:SN, annot=true, grid=true), yaxis=(axes=:WE, annot="60m", ticks="30m", grid=true),
+		#region=(3, 27, 83, 85.5),
+	#rose = (outside=true, anchor=:TR, width=1.2, frame=false, offset=(-2.0, -3.0), label=true), show=0, fmt=:png)
+	GMT.colorbar!(pos=(anchor=:CR, length=(6,0.2), offset=(1 ,0)), cmap=cbar, frame=(annot=:auto, xlabel="Lead Fraction", font="9p"))
+	GMT.plot!(lon_circ, lat_circ, linestyle=:dash, lc=:lightred)
+	GMT.scatter!(lon[idx_box][idx_wd], lat[idx_box][idx_wd], ms=0.1, marker=:square)
+	GMT.plot!([Plon...], [Plat...], linestyle=:dash, lc=:lightblue)
+	GMT.plot!(rv_lon, rv_lat, marker=:star, markersize=0.1, mc=:red, show=1, fmt=:png)
 end#, (axes="WS", annot=true, grid=true)
 
-# ╔═╡ ae4ca8a7-5965-43f6-8525-95b94df52d56
-extrema(lon0), extrema(lat0)
-
 # ╔═╡ 7b1bf832-5647-4393-8fd9-c14670e6ac4e
-#GMT.scatter(coor["lon"][:], coor["lat"][:], zcolor=LF', color=cbar, markersize=0.1, marker=:square, proj=(name=:Stereographic, center=[10,90]), show=0, fmt=:png); GMT.plot!(rv_lon, rv_lat, marker=:star, markercolor=:red, show=1, fmt=:png)
+#GMT.scatter(coor["lon"][:], coor["lat"][:], zcolor=LF', color=cbar, markersize=0.1, marker=:square, proj=(name=:Stereographic, center=[10,90]), show=0, fmt=:png); GMT.plot!(rv_lon, rv_lat, marker=:star, markercolor=:red, show=1, fmt=:png) 𝑉σ ±
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 GMT = "5752ebe1-31b9-557e-87aa-f909b540aa54"
 Geodesy = "0ef565a4-170c-5f04-8de2-149903a85f3d"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
-MATLAB = "10e44e05-a98a-55b3-a45b-ba969058deb6"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 Navigation = "cc87a3b2-3706-4f35-b5b4-b2c85061916d"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
@@ -150,7 +192,6 @@ Scanf = "6ef1bc8b-493b-44e1-8d40-549aa65c4b41"
 GMT = "~0.42.4"
 Geodesy = "~1.1.0"
 JLD2 = "~0.4.22"
-MATLAB = "~0.8.3"
 NCDatasets = "~0.12.5"
 Navigation = "~0.4.1"
 Plots = "~1.31.6"
@@ -201,6 +242,12 @@ deps = ["Artifacts", "Bzip2_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll",
 git-tree-sha1 = "4b859a208b2397a7a623a03449e4636bdb17bcf2"
 uuid = "83423d85-b0ee-5818-9007-b63ccbeb887a"
 version = "1.16.1+1"
+
+[[deps.Calculus]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "f641eb0a4f00c343bbc32346e1217b86f3ce9dad"
+uuid = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
+version = "0.5.1"
 
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra", "SparseArrays"]
@@ -300,6 +347,18 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 deps = ["Mmap"]
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 
+[[deps.DensityInterface]]
+deps = ["InverseFunctions", "Test"]
+git-tree-sha1 = "80c3e8639e3353e5d2912fb3a1916b8455e2494b"
+uuid = "b429d917-457f-4dbc-8f4c-0cc954292b1d"
+version = "0.4.0"
+
+[[deps.Distributions]]
+deps = ["ChainRulesCore", "DensityInterface", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SparseArrays", "SpecialFunctions", "Statistics", "StatsBase", "StatsFuns", "Test"]
+git-tree-sha1 = "6180800cebb409d7eeef8b2a9a562107b9705be5"
+uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
+version = "0.25.67"
+
 [[deps.DocStringExtensions]]
 deps = ["LibGit2"]
 git-tree-sha1 = "b19534d1895d702889b219c382a6e18010797f0b"
@@ -315,6 +374,12 @@ version = "0.25.5"
 [[deps.Downloads]]
 deps = ["ArgTools", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+
+[[deps.DualNumbers]]
+deps = ["Calculus", "NaNMath", "SpecialFunctions"]
+git-tree-sha1 = "5837a837389fccf076445fce071c8ddaea35a566"
+uuid = "fa6b7ba4-c1ee-5f82-b5fc-ecf0adba8f74"
+version = "0.6.8"
 
 [[deps.EarCut_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -350,6 +415,12 @@ deps = ["Pkg", "Requires", "UUIDs"]
 git-tree-sha1 = "94f5101b96d2d968ace56f7f2db19d0a5f592e28"
 uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 version = "1.15.0"
+
+[[deps.FillArrays]]
+deps = ["LinearAlgebra", "Random", "SparseArrays", "Statistics"]
+git-tree-sha1 = "246621d23d1f43e3b9c368bf3b72b2331a27c286"
+uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
+version = "0.13.2"
 
 [[deps.FixedPointNumbers]]
 deps = ["Statistics"]
@@ -463,6 +534,12 @@ deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll",
 git-tree-sha1 = "129acf094d168394e80ee1dc4bc06ec835e510a3"
 uuid = "2e76f6c2-a576-52d4-95c1-20adfe4de566"
 version = "2.8.1+1"
+
+[[deps.HypergeometricFunctions]]
+deps = ["DualNumbers", "LinearAlgebra", "OpenLibm_jll", "SpecialFunctions", "Test"]
+git-tree-sha1 = "709d864e3ed6e3545230601f94e11ebc65994641"
+uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
+version = "0.3.11"
 
 [[deps.IOCapture]]
 deps = ["Logging"]
@@ -639,12 +716,6 @@ git-tree-sha1 = "5d4d2d9904227b8bd66386c1138cf4d5ffa826bf"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "0.4.9"
 
-[[deps.MATLAB]]
-deps = ["Libdl", "SparseArrays"]
-git-tree-sha1 = "e263657fe013cb02450c5d4210d2c50a354a5e08"
-uuid = "10e44e05-a98a-55b3-a45b-ba969058deb6"
-version = "0.8.3"
-
 [[deps.MacroTools]]
 deps = ["Markdown", "Random"]
 git-tree-sha1 = "3d3e902b31198a27340d0bf00d6ac452866021cf"
@@ -752,6 +823,12 @@ git-tree-sha1 = "b2a7af664e098055a7529ad1a900ded962bca488"
 uuid = "2f80f16e-611a-54ab-bc61-aa92de5b98fc"
 version = "8.44.0+0"
 
+[[deps.PDMats]]
+deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
+git-tree-sha1 = "cf494dca75a69712a72b80bc48f59dcf3dea63ec"
+uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
+version = "0.11.16"
+
 [[deps.Parsers]]
 deps = ["Dates"]
 git-tree-sha1 = "0044b23da09b5608b4ecacb4e5e6c6332f833a7e"
@@ -808,6 +885,12 @@ git-tree-sha1 = "c6c0f690d0cc7caddb74cef7aa847b824a16b256"
 uuid = "ea2cea3b-5b76-57ae-a6ef-0a8af62496e1"
 version = "5.15.3+1"
 
+[[deps.QuadGK]]
+deps = ["DataStructures", "LinearAlgebra"]
+git-tree-sha1 = "78aadffb3efd2155af139781b8a8df1ef279ea39"
+uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
+version = "2.4.2"
+
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
@@ -843,6 +926,18 @@ deps = ["UUIDs"]
 git-tree-sha1 = "838a3a4188e2ded87a4f9f184b4b0d78a1e91cb7"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.3.0"
+
+[[deps.Rmath]]
+deps = ["Random", "Rmath_jll"]
+git-tree-sha1 = "bf3188feca147ce108c76ad82c2792c57abe7b1f"
+uuid = "79098fc4-a85e-5d69-aa6a-4863f24498fa"
+version = "0.7.0"
+
+[[deps.Rmath_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "68db32dff12bb6127bac73c209881191bf0efbb7"
+uuid = "f50d1b31-88e8-58de-be2c-1cc44531875f"
+version = "0.3.0+0"
 
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
@@ -919,11 +1014,21 @@ git-tree-sha1 = "d1bf48bfcc554a3761a133fe3a9bb01488e06916"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.33.21"
 
+[[deps.StatsFuns]]
+deps = ["ChainRulesCore", "HypergeometricFunctions", "InverseFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
+git-tree-sha1 = "5783b877201a82fc0014cbf381e7e6eb130473a4"
+uuid = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
+version = "1.0.1"
+
 [[deps.StructArrays]]
 deps = ["Adapt", "DataAPI", "StaticArrays", "Tables"]
 git-tree-sha1 = "ec47fb6069c57f1cee2f67541bf8f23415146de7"
 uuid = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 version = "0.6.11"
+
+[[deps.SuiteSparse]]
+deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
+uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
 [[deps.TOML]]
 deps = ["Dates"]
@@ -1221,19 +1326,30 @@ version = "0.9.1+5"
 # ╠═6d69733a-b8d1-4e0a-a1c6-5fd491329248
 # ╠═2caacf21-193f-4aa1-a1bc-8c3772b7b17b
 # ╠═5eda1848-e7d9-43a9-8ed2-56f2155bc429
-# ╠═d78d41a2-38dd-43d6-a218-38374536cdb6
 # ╠═d8861bb2-7f8c-4ac8-ac96-3dd504e496fe
-# ╠═d65ec147-836b-4539-a40b-dd77ff7c25a9
-# ╠═5dd03741-8c7c-4247-ad9b-d0e7991297ce
-# ╠═61b4e38b-3d3f-432a-9234-8f3d311e6da0
-# ╠═1cdf3a5c-800e-44c8-9a80-ebaff2403f92
-# ╠═09b5cb48-53f0-45f0-a429-736676f04c22
 # ╠═f7a2d9a6-eac9-4d20-b51b-c84a6ff9c2df
-# ╠═603f2af6-aad1-4956-88da-d9e20d5bf66f
-# ╠═7824e914-bb88-4001-a78f-8b4c9359e4fd
-# ╠═45a2d328-684e-4d6e-a359-c6d6740508c3
+# ╠═5dd03741-8c7c-4247-ad9b-d0e7991297ce
+# ╠═09b5cb48-53f0-45f0-a429-736676f04c22
+# ╠═d65ec147-836b-4539-a40b-dd77ff7c25a9
+# ╠═e46f56c8-dc76-44c4-822d-e537c46bc631
+# ╠═08e91c37-9b71-4afc-89c0-37adc1c9fd34
+# ╠═586d62b1-080b-4a2e-82ec-ae234be486c8
+# ╠═3d290a5f-5454-4e4b-b2ae-aaa72b594954
+# ╠═6c83c460-d358-474e-806d-ac6c00d55ca6
+# ╠═850e8eeb-c56c-41cd-839d-df6469f9db1a
+# ╠═1be1fc5b-d5b7-43d7-8094-19bb9ad29ae1
+# ╠═cbc18c2c-de16-44c2-8169-418a750f15e6
+# ╠═b912bf26-9cc9-43dc-b1e8-0db2f2285c6f
+# ╠═09cd84f7-6753-48c1-9a2c-3480778304f0
+# ╠═57117ffa-7aaf-40c0-8a8a-163fb9ce8cae
+# ╠═90ca7bef-3040-4ea3-a933-dccdd6b83a44
+# ╠═6dda406f-50f6-44c1-8aa2-ccc60747b241
+# ╠═e8caeff3-a52b-4c7e-8c67-0b22126d267e
+# ╠═ac72b777-9671-45fc-89df-27da0dff84cf
+# ╠═364d40bd-0263-494e-9ef8-71f8752a77ff
+# ╠═4ed70ba1-fb76-4855-a904-46f27992db05
+# ╠═fb167725-3156-4c2a-8280-5da46070e0ed
 # ╠═d5ac0e2d-7531-45e7-9dc6-7960b44b71e8
-# ╠═ae4ca8a7-5965-43f6-8525-95b94df52d56
 # ╠═7b1bf832-5647-4393-8fd9-c14670e6ac4e
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002

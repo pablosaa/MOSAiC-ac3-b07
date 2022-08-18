@@ -1,22 +1,58 @@
 # *************************************************************
 # ***** MATH FUNCTIONS 
 """
+function returns the truncated normal distribution of X
+ julia> 𝑓ₗᵤ = 𝑁ₗᵤ(x, L=0, U=100)
+
+Where:
+* x : Vector containg data to fit distribution
+* L : (optional) lower bound, default = 0
+* U : (optional) upper bound, default = ∞
+"""
+function 𝑁ₗᵤ(x::Vector; L=0, U=nothing)
+    𝑁 = Normal(mean(x), std(x))
+    if isnothing(U)
+        return truncated(𝑁, lower=L)
+    elseif L<U
+        return truncated(𝑁, lower=L, upper=U)
+    else
+        @error "L must be lower than U, but given $L ≥ $U"
+    end
+    
+end
+# ----/
+
+"""
+Function returns the mean and standard deviation of a
+ truncated normal distribution of given data
+julia> 
+"""
+function stats_𝑁ₗᵤ(x::Vector; L=0, U=nothing)
+    f = 𝑁ₗᵤ(x, L=L, U=U)
+    return mean(f), std(f)
+end
+# ----/
+
+
+"""
 faktor(x,y) computes the ratio of x/y
 """
 faktor(x, y) = x/y
+# ----/
 
 """
 To compute uncertainties from function f = x*y or f=x/y 
 δf(x, y, δx, δy, f) with x ± δx, y ± δy and f::Function
 """
 δf(x, y, δx, δy, f) = f(x,y)*sqrt( (δx/x)^2 + (δy/y)^2 )
+# ----/
 
 """
 Convert input to SIC scaled to reference SIC given by factor fₖ,
 truncating the output to 100%
 """
 fix(x, fₖ) = min(fₖ*x, 100)
-
+# ----/
 
 """
 Transform lat, lon data to coordinates at a polar steregraphic system
@@ -52,15 +88,17 @@ function latlon2xy(ϕ::T, λ::T; ϕc::T=70.0, λ₀::T=0.0, 𝑎=6378137.0, 𝑒
     return x, y
 end
 
-function latlon2xy(ϕ::Vector{T}, λ::Vector{T}; ϕc::T=70.0, λ₀::T=0.0, 𝑎=6378137.0, 𝑒=0.08181919) where T<:Real
+function latlon2xy(ϕ::Array{T}, λ::Array{T}; ϕc::T=70.0, λ₀::T=0.0, 𝑎=6378137.0, 𝑒=0.08181919) where T<:Real
 
-    x = T[]
-    y = T[]
-    for (lat, lon) ∈ zip(ϕ, λ)
-        xi, yi = latlon2xy(lat, lon; ϕc=ϕc, λ₀=λ₀, 𝑎=𝑎, 𝑒=𝑒)
-        push!(x, xi)
-        push!(y, yi)
+    x = similar(ϕ)
+    y = similar(λ)
+    
+    tmp = @. latlon2xy(ϕ, λ; ϕc=ϕc, λ₀=λ₀, 𝑎=𝑎, 𝑒=𝑒)
+    foreach(pairs(tmp)) do (i, V)
+        x[i] = V[1]
+        y[i] = V[2]
     end
+    
     return x, y
 end
 # ----/
@@ -87,15 +125,15 @@ Polar stereographic projection used for satellite polar sea ice studies.
 Equations adapted from "Map Projections - A Working Manual! by J.P. Snyder (1987)
 
 """
-function xy2latlon(x::T, y::T; ϕc::T=70.0, λ₀::T=0.0, 𝑎=6378137.0, 𝑒=0.08181919) where T<:Real
+function xy2latlon(x::T, y::T; ϕₖ=70, λ₀=0, 𝑎=6378137.0, 𝑒=0.08181919) where T<:Real
 
-    ϕc *= π/180
+    ϕₖ *= π/180
     λ₀ *= π/180
     
-    t(α) = tan(π/4-α/2)/√((1-𝑒*sin(α))/(1+𝑒*sin(α)))^𝑒          # Eq. (15-19)  
+    t(α) = tan(π/4-α/2)/√((1-𝑒*sin(α))/(1+𝑒*sin(α)))^𝑒        # Eq. (15-9)  
     m(α) = cos(α)/√(1-(𝑒*sin(α))^2)    # Eq. (14-15)
-    tₖ = t(ϕc)
-    mₖ = m(ϕc)
+    tₖ = t(ϕₖ)
+    mₖ = m(ϕₖ)
     
     ρ = √(x^2 + y^2)       # Eq. (20-18)
     
@@ -103,10 +141,10 @@ function xy2latlon(x::T, y::T; ϕc::T=70.0, λ₀::T=0.0, 𝑎=6378137.0, 𝑒=0
     χ = π/2 - 2atan(t)     # Eq. (7-13)
 
     # Eq. (3-5)
-    ϕ = χ + (𝑒^2/2 + 5𝑒^4/24 + 𝑒^6/12 + 13𝑒^8/360)*sin(2χ) +
-        (7𝑒^4/48 + 29𝑒^6/240 + 811𝑒^8/11520)*sin(4χ) +
-        (7𝑒^6/120 + 81𝑒^8/1120)*sin(6χ) +
-        (4279𝑒^8/161280)*sin(8χ)
+    ϕ = χ + (𝑒^2/2 + 5𝑒^4/24 + 𝑒^6/12 + 13𝑒^8/360)sin(2χ) +
+        (7𝑒^4/48 + 29𝑒^6/240 + 811𝑒^8/11520)sin(4χ) +
+        (7𝑒^6/120 + 81𝑒^8/1120)sin(6χ) +
+        (4279𝑒^8/161280)sin(8χ)
     
     λ = λ₀ + atan(x, -y)        # Eq. (20-16)
     
@@ -116,26 +154,45 @@ function xy2latlon(x::T, y::T; ϕc::T=70.0, λ₀::T=0.0, 𝑎=6378137.0, 𝑒=0
     return rad2deg(ϕ), rad2deg(λ)
 end
 
-function xy2latlon(x::Array{T}, y::Array{T}; ϕc::T=70.0, λ₀::T=0.0, 𝑎=6378137.0, 𝑒=0.08181919) where T<:Real
+function xy2latlon(x::Array{T}, y::Array{T}; ϕₖ::T=70.0, λ₀::T=0.0, 𝑎=6378137.0, 𝑒=0.08181919) where T<:Real
 
     
     ϕ = similar(x)
     λ = similar(y)
 
-    tmp = @. xy2latlon(x, y, ϕc=ϕc, λ₀=λ₀, 𝑎=𝑎, 𝑒=𝑒)
+    tmp = @. xy2latlon(x, y, ϕₖ=ϕₖ, λ₀=λ₀, 𝑎=𝑎, 𝑒=𝑒)
     foreach(pairs(tmp)) do (i, V)
         ϕ[i] = V[1]
         λ[i] = V[2]
     end
     
-    #for (xi, yi) ∈ zip(x, y)
-    #    lat, lon = xy2latlon(xi, yi, ϕc=ϕc, λ₀=λ₀, 𝑎=𝑎, 𝑒=𝑒)
-    #    push!(ϕ, lat)
-    #    push!(λ, lon)
-    #end
-    
     return ϕ, λ
 end
 # ----/
 
+
+"""
+Function to mimic MATLAB meshgrid
+
+julia> X, Y = couple2grid(x, y)
+
+Where:
+* x : Vector
+* y : Vector
+Output:
+* X : Matrix (ny, nx) with x repeated along the other dimension,
+* Y : Matrix (ny, nx)
+
+where nx = length(x) and ny = length(y)
+"""
+function couple2grid(x::Vector{T}, y::Vector{T}) where T<:Real
+    nx = length(x)
+    ny = length(y)
+
+    X = ones(ny)'.*x;
+    Y = y'.*ones(nx)
+    
+    return X, Y
+end
+# ----/
 # end of file
