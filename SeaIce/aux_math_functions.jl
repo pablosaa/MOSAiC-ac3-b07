@@ -28,8 +28,14 @@ Function returns the mean and standard deviation of a
 julia> 
 """
 function stats_𝑁ₗᵤ(x::Vector; L=0, U=nothing)
-    f = 𝑁ₗᵤ(x, L=L, U=U)
-    return mean(f), std(f)
+    f = if isnothing(L) && isnothing(U)
+        x
+    else
+        𝑁ₗᵤ(x, L=L, U=U)
+    end
+    
+    return mean(f), std(f), quantile(f, [.05, .25, .5, .75, .95])
+            
 end
 # ----/
 
@@ -54,6 +60,34 @@ truncating the output to 100%
 fix(x, fₖ) = min(fₖ*x, 100)
 # ----/
 
+"""
+Function search and retrieve fix factors (μ, σ) for ASI SIC
+"""
+function getSICfixfactor(heute::DateTime, df::DataFrame; qq=nothing)
+
+    vars = [:time, :ratio, :ratio_error]
+    
+    if !isnothing(qq) && typeof(qq)<:Vector
+        foreach(qq) do V
+            push!(vars, V)
+        end
+    end
+
+    tmp = filter(:time=> ==(heute), df) |> F->F[!, vars]
+    return transform!(tmp, vars.=> ByRow(x->typeof(x)<:String ? eval(Meta.parse(x)) : x) .=> vars)
+        #(vars=vcat(vars, [:qq_asi, :qq_osi]))
+
+
+
+    #return transform!(tmp, X->typeof(X)<:String ? eval(Meta.parse(X)) : X, tmp)
+    #    tmp[!,N] |> X->typeof(X)<:String ? Meta.parse(X) |> eval : X
+    #end
+    
+    #return filter(:time=> D->DateTime(D)==(heute), df) |> F->F[!, [:time, :ϱ, :δϱ]]
+end
+# ----/
+
+# *******************************************************************************
 """
 Transform lat, lon data to coordinates at a polar steregraphic system
 
